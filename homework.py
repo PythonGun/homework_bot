@@ -47,7 +47,7 @@ def send_message(bot, message):
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
         logger.info(f'Сообщение: {message}, успешно отправлено в чат')
     except exceptions.SendMessageFail:
-        logger.error(f'Ошибка! Сообщение не отправлено')
+        logger.error('Ошибка! Сообщение не отправлено')
 
 
 def get_api_answer(current_timestamp):
@@ -69,13 +69,12 @@ def get_api_answer(current_timestamp):
             status_homework.raise_for_status()
             error_message = 'Некоректный ответ от сервера. != 200'
             logger.error(error_message)
-            raise  exceptions.APIResponseStatusCodeException(error_message)
+            raise exceptions.APIResponseStatusCodeException(error_message)
         return status_homework.json()
     except simplejson.JSONDecodeError:
         error_message = 'Ошибка преобразования в json'
         logger.error(error_message)
         raise exceptions.DecoderJsonException(error_message)
-        
 
 
 def check_response(response):
@@ -155,7 +154,7 @@ def main():
         error_message = 'Токены недоступны'
         logger.error(error_message)
         raise (error_message)
-        
+
     bot = Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
 
