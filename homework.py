@@ -1,12 +1,15 @@
 import os
 import time
 import logging
-import requests
-
-from telegram import Bot
+import json as simplejson
 from http import HTTPStatus
+
+import requests
+from telegram import Bot
 from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
+
+import exceptions
 
 load_dotenv()
 
@@ -18,7 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 handler = RotatingFileHandler(
-    'my_logger.log', maxBytes=50000000, backupCount=5
+    'logger.log', maxBytes=50000000, backupCount=5
 )
 logger.addHandler(handler)
 
@@ -43,9 +46,8 @@ def send_message(bot, message):
     try:
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
         logger.info(f'Сообщение: {message}, успешно отправлено в чат')
-    except Exception as error:
-        logger.error(f'Ошибка! Сообщение не отправлено {error}')
-        raise Exception(f'Ошибка при отправке сообщения {error}')
+    except exceptions.SendMessageFail:
+        logger.error(f'Ошибка! Сообщение не отправлено')
 
 
 def get_api_answer(current_timestamp):
@@ -59,15 +61,21 @@ def get_api_answer(current_timestamp):
             params=params
         )
     except requests.exceptions.RequestException as error:
-        logger.error(f'Сбой: {error}')
-        raise Exception(f'сбой: {error}')
+        logger.error(f'Сбой при запросе к endpoint: {error}')
+        raise Exception(f'Сбой при запросе к endpoint:: {error}')
 
-    if status_homework.status_code != HTTPStatus.OK:
-        status_homework.raise_for_status()
-        error_message = 'Некоректный ответ от сервера. != 200'
+    try:
+        if status_homework.status_code != HTTPStatus.OK:
+            status_homework.raise_for_status()
+            error_message = 'Некоректный ответ от сервера. != 200'
+            logger.error(error_message)
+            raise  exceptions.APIResponseStatusCodeException(error_message)
+        return status_homework.json()
+    except simplejson.JSONDecodeError:
+        error_message = 'Ошибка преобразования в json'
         logger.error(error_message)
-        raise Exception(error_message)
-    return status_homework.json()
+        raise exceptions.DecoderJsonException(error_message)
+        
 
 
 def check_response(response):
@@ -75,23 +83,22 @@ def check_response(response):
     try:
         homeworks_list = response['homeworks']
     except KeyError as error:
-        error_message = f'Ошибка формата данных. homeworks не список {error}'
+        error_message = f'Ошибка доступа по ключу {error}'
         logger.error(error_message)
         raise KeyError(error_message)
 
-    if 'homeworks' not in response:
-        error_message = 'В ответе API отсутствует ключ homeworks'
+    if homeworks_list is None:
+        error_message = 'В ответе отсутствует словарь'
         logger.error(error_message)
-        raise KeyError(error_message)
-    elif 'current_date' not in response:
+        raise exceptions.CheckResponseTypeException(error_message)
+    if 'current_date' not in response:
         error_message = 'В ответе API отсутствует ключ current_date'
         logger.error(error_message)
         raise KeyError(error_message)
-    else:
-        if not isinstance(homeworks_list, list):
-            logger.error('Пришел неверный тип данных от сервера!')
-            raise TypeError('Пришел неверный тип данных от сервера!')
-        return homeworks_list
+    if not isinstance(homeworks_list, list):
+        logger.error('Пришел неверный тип данных от сервера!')
+        raise TypeError('Пришел неверный тип данных от сервера!')
+    return homeworks_list
 
 
 def parse_status(homework):
@@ -113,7 +120,11 @@ def parse_status(homework):
             logger.error(f'Неопознанный статус: {homework_status}')
             raise KeyError(f'Неопознанный статус: {homework_status}')
 
-    verdict = HOMEWORK_STATUSES.get(homework_status)
+    verdict = HOMEWORK_STATUSES[homework_status]
+    if verdict is None:
+        error_message = 'Нет статуса домашки'
+        logger.error(error_message)
+        raise exceptions.UnknownStatusHWException(error_message)
     return (f'Изменился статус проверки работы '
             f'"{homework_name}". {verdict}')
 
@@ -143,8 +154,8 @@ def main():
     if not check_tokens():
         error_message = 'Токены недоступны'
         logger.error(error_message)
-        raise Exception(error_message)
-
+        raise (error_message)
+        
     bot = Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
 
@@ -154,7 +165,7 @@ def main():
             if response:
                 homework = check_response(response)
                 logger.info('Есть новости')
-                message = parse_status(homework)
+                message = parse_status(homework[0])
                 send_message(bot, message)
             current_timestamp = response.get('current_date')
             time.sleep(RETRY_TIME)
