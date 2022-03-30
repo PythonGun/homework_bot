@@ -163,10 +163,10 @@ def main():
     while True:
         try:
             response = get_api_answer(current_timestamp)
-            homework = check_response(response)
-            if len(homework) != 0:
+            homeworks = check_response(response)
+            if len(homeworks) != 0:
                 logger.info('Есть новости')
-                message = parse_status(homework[0])
+                message = parse_status(homeworks[0])
                 send_message(bot, message)
             current_timestamp = response.get('current_date')
         except Exception as error:
