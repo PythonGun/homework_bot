@@ -5,7 +5,7 @@ import json as simplejson
 from http import HTTPStatus
 
 import requests
-from telegram import Bot
+import telegram
 from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
 
@@ -21,7 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 handler = RotatingFileHandler(
-    'logger.log', maxBytes=50000000, backupCount=5
+    'logger.log', maxBytes=50000000, backupCount=5, encoding='utf-8'
 )
 logger.addHandler(handler)
 
@@ -46,8 +46,8 @@ def send_message(bot, message):
     try:
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
         logger.info(f'Сообщение: {message}, успешно отправлено в чат')
-    except exceptions.SendMessageFail:
-        logger.error('Ошибка! Сообщение не отправлено')
+    except telegram.TelegramError as error:
+        logger.error(f'Ошибка! Сообщение не отправлено {error}')
 
 
 def get_api_answer(current_timestamp):
@@ -61,8 +61,9 @@ def get_api_answer(current_timestamp):
             params=params
         )
     except requests.exceptions.RequestException as error:
-        logger.error(f'Сбой при запросе к endpoint: {error}')
-        raise Exception(f'Сбой при запросе к endpoint:: {error}')
+        message_error = f'Сбой при запросе к endpoint: {error}'
+        logger.error(message_error)
+        raise exceptions.APIResponseStatusCodeException(message_error)
 
     try:
         if status_homework.status_code != HTTPStatus.OK:
@@ -155,23 +156,24 @@ def main():
         logger.error(error_message)
         raise (error_message)
 
-    bot = Bot(token=TELEGRAM_TOKEN)
+    bot = telegram.Bot(token=TELEGRAM_TOKEN)
+    logger.info('Бот инициирован')
     current_timestamp = int(time.time())
 
     while True:
         try:
             response = get_api_answer(current_timestamp)
-            if response:
-                homework = check_response(response)
+            homework = check_response(response)
+            if len(homework) != 0:
                 logger.info('Есть новости')
                 message = parse_status(homework[0])
                 send_message(bot, message)
             current_timestamp = response.get('current_date')
-            time.sleep(RETRY_TIME)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logger.error(message)
-            time.sleep(RETRY_TIME)
+            send_message(bot, message)
+        time.sleep(RETRY_TIME)
 
 
 if __name__ == '__main__':
