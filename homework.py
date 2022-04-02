@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import logging
 import json as simplejson
@@ -24,6 +25,11 @@ handler = RotatingFileHandler(
     'logger.log', maxBytes=50000000, backupCount=5, encoding='utf-8'
 )
 logger.addHandler(handler)
+# Добавляем вывод лога в консоль
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+streamHandler = logging.StreamHandler(sys.stdout)
+streamHandler.setFormatter(formatter)
+logger.addHandler(streamHandler)
 
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
@@ -60,6 +66,7 @@ def get_api_answer(current_timestamp):
             headers=HEADERS,
             params=params
         )
+        print(status_homework.content)
     except requests.exceptions.RequestException as error:
         message_error = f'Сбой при запросе к endpoint: {error}'
         logger.error(message_error)
@@ -158,7 +165,7 @@ def main():
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     logger.info('Бот инициирован')
-    current_timestamp = int(time.time())
+    current_timestamp = int(time.time()) - 1209600
 
     while True:
         try:
